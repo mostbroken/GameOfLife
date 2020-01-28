@@ -20,27 +20,27 @@ type Cell =
 type Population = 
     {   Cells: Cell list 
         Size:WorldSize
-        Generation:int}
+        Generation:int64}
 
 type MainWindow() as this =
     inherit MainWindowXaml()
     
     let rnd = System.Random()
-    let rows = 50
-    let columns = 50
-    let getRandomBool () = (rnd.Next 100) < 20
+    let frameRatePerSecond = 10
+    let worldSize = { Height = 50; Width = 50 }
+    let getRandomBool percentage = (rnd.Next 100) < percentage
+    let mutable started = false
 
-    let generateWorld rows columns= 
-        let cells = [for r in [0..rows-1] do
-                        for c in [0..columns-1] do
-                            yield { IsAlive= getRandomBool ()
+    let generateWorld ws = 
+        let cells = [for r in [0 .. ws.Height-1] do
+                        for c in [0 .. ws.Width-1] do
+                            yield { IsAlive = getRandomBool 30
                                     X = c
                                     Y = r}
                         ]
         { Cells=cells
-          Size = { Height = rows
-                   Width = columns}
-          Generation = 1} 
+          Size = ws
+          Generation = 1L} 
                    
     let getCell world x y = world.Cells|> List.find (fun c-> c.X = x && c.Y = y)
  
@@ -77,11 +77,11 @@ type MainWindow() as this =
         | (true, l ,_) when l < 2 || l > 3 -> {cell with IsAlive = false}
         | _ -> cell
 
-    let mutateWorld world = 
+    let mutatePopulation world = 
         let mutatedCells = world.Cells |> List.map (fun c -> mutateCell world c)
         { world with 
             Cells = mutatedCells
-            Generation = world.Generation + 1}
+            Generation = world.Generation + 1L}
         
     let getCellViews() = [for r in this._worldField.Children do r :?> Rectangle]
 
@@ -93,36 +93,45 @@ type MainWindow() as this =
     let drawWorld world =
         List.zip (getCellViews()) world.Cells |> List.iter updateCellView
 
-    let initCellViews rows columns = 
-        this._worldField.Rows <- rows   
-        this._worldField.Columns <- columns
+    let initCellViews worldSize = 
+        this._worldField.Rows <- worldSize.Height   
+        this._worldField.Columns <- worldSize.Width
 
-        for _ in [0..rows-1] do
-            for _ in [0..columns-1] do
+        for _ in [0..worldSize.Height-1] do
+            for _ in [0..worldSize.Width-1] do
                 let cell = Rectangle()
                 cell.StrokeThickness <- 0.0
                 this._worldField.Children.Add(cell) |> ignore
                 ()
 
-    let whenLoaded _ =  
-        this.SnapsToDevicePixels <- true
-        initCellViews rows columns
+    let onLifeCycleBtnClicked _ =
+        started <- not started
+        this._lifeCycleBtn.Content <- if started then "Stop" else "Start"
+        ()
 
-        let workflowInSeries = async {
+    let onLoaded _ =  
+        this.SnapsToDevicePixels <- true
+        initCellViews worldSize
+
+
+        let lifeCycle = async {
+                let mutable world = generateWorld worldSize
             
-                let mutable world = generateWorld rows columns
+                let draw _ = 
+                    drawWorld world
+                    this.Title <- sprintf "Game of life. Generation = %d" world.Generation
 
                 while true do
-                    this.Dispatcher.Invoke(fun () -> (
-                                                        drawWorld world
-                                                        this.Title <- sprintf "Game of life. Generation = %A" world.Generation))
-                    world <- mutateWorld world
-                    do! Async.Sleep 500
-            }
+                    if started then
+                        this.Dispatcher.Invoke(draw)
+                        world <- mutatePopulation world
+                        
+                    do! Async.Sleep (1000/frameRatePerSecond)
+                }
 
-        Async.Start workflowInSeries 
-
+        Async.Start lifeCycle 
         ()
 
     do
-        this.Loaded.Add whenLoaded
+        this.Loaded.Add onLoaded
+        this._lifeCycleBtn.Click.Add onLifeCycleBtnClicked
