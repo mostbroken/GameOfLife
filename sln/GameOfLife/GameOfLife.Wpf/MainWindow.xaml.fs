@@ -6,26 +6,29 @@ open System.Windows.Controls.Primitives
 
 type MainWindowXaml = FsXaml.XAML<"MainWindow.xaml">
 
+[<Struct>]
 type WorldSize ={
     Height:int
     Width:int}
 
+[<Struct>]
 type Cell = 
     {   IsAlive:bool
         X:int
         Y:int }
 
-type World = 
+type Population = 
     {   Cells: Cell list 
-        Size:WorldSize}
+        Size:WorldSize
+        Generation:int}
 
 type MainWindow() as this =
     inherit MainWindowXaml()
+    
     let rnd = System.Random()
-    let rows = 150
-    let columns = 150
-
-    let getRandomBool () = (rnd.Next 100) < 1
+    let rows = 50
+    let columns = 50
+    let getRandomBool () = (rnd.Next 100) < 20
 
     let generateWorld rows columns= 
         let cells = [for r in [0..rows-1] do
@@ -36,7 +39,8 @@ type MainWindow() as this =
                         ]
         { Cells=cells
           Size = { Height = rows
-                   Width = columns}} 
+                   Width = columns}
+          Generation = 1} 
                    
     let getCell world x y = world.Cells|> List.find (fun c-> c.X = x && c.Y = y)
  
@@ -64,51 +68,61 @@ type MainWindow() as this =
     let getDeadNeighborsCount world cell =
         (getNeighbors world cell) |> List.filter (fun c -> c.IsAlive = false)|> List.length
 
+    let mutateCell world cell = 
+        let aliveCount = getAliveNeighborsCount world cell
+        let deadCount = getDeadNeighborsCount world cell
+
+        match (cell.IsAlive, aliveCount, deadCount) with
+        | (false, 3 ,_) -> {cell with IsAlive = true}
+        | (true, l ,_) when l < 2 || l > 3 -> {cell with IsAlive = false}
+        | _ -> cell
+
     let mutateWorld world = 
-        world.Cells
+        let mutatedCells = world.Cells |> List.map (fun c -> mutateCell world c)
+        { world with 
+            Cells = mutatedCells
+            Generation = world.Generation + 1}
         
+    let getCellViews() = [for r in this._worldField.Children do r :?> Rectangle]
 
-    let getCellViews() = [for r in this._grid.Children do r :?> Rectangle]
-
-    let syncViewsAndCells (viewAndCell:(Rectangle*Cell)) =
+    let updateCellView (viewAndCell:(Rectangle*Cell)) =
         let (r,c) = viewAndCell
-        r.Fill <- if c.IsAlive then System.Windows.Media.Brushes.White else  System.Windows.Media.Brushes.Black
+        r.Fill <- if c.IsAlive then System.Windows.Media.Brushes.Green else  System.Windows.Media.Brushes.White
         ()
 
     let drawWorld world =
-        List.zip (getCellViews()) world.Cells |> List.iter syncViewsAndCells
+        List.zip (getCellViews()) world.Cells |> List.iter updateCellView
+
+    let initCellViews rows columns = 
+        this._worldField.Rows <- rows   
+        this._worldField.Columns <- columns
+
+        for _ in [0..rows-1] do
+            for _ in [0..columns-1] do
+                let cell = Rectangle()
+                cell.StrokeThickness <- 0.0
+                this._worldField.Children.Add(cell) |> ignore
+                ()
 
     let whenLoaded _ =  
         this.SnapsToDevicePixels <- true
-        this._grid.Rows <- rows   
-        this._grid.Columns <- columns
+        initCellViews rows columns
 
-        for r in [0..rows-1] do
-            for c in [0..columns-1] do
-                let cell = Rectangle()
-                cell.StrokeThickness <- 0.0
-                cell.Fill <- System.Windows.Media.Brushes.Black
-                cell.Tag <- sprintf "%A-%A" r c
-                this._grid.Children.Add(cell) |> ignore
-                ()
+        let workflowInSeries = async {
+            
+                let mutable world = generateWorld rows columns
 
-        let world = generateWorld rows columns
-        drawWorld world
+                while true do
+                    this.Dispatcher.Invoke(fun () -> (
+                                                        drawWorld world
+                                                        this.Title <- sprintf "Game of life. Generation = %A" world.Generation))
+                    world <- mutateWorld world
+                    do! Async.Sleep 500
+            }
+
+        Async.Start workflowInSeries 
+
         ()
-
-
-
-    let whenClosing _ =
-        ()
-
-    let whenClosed _ =
-        ()
-
-    let btnTestClick _ =
-        this.Title <- "Yup, it works!"
 
     do
         this.Loaded.Add whenLoaded
-        this.Closing.Add whenClosing
-        this.Closed.Add whenClosed
-        //this.btnTest.Click.Add btnTestClick
