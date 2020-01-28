@@ -120,10 +120,12 @@ type MainWindow() as this =
         this._worldField.Rows <- worldSize.Height   
         this._worldField.Columns <- worldSize.Width
 
-        for _ in [0..worldSize.Height-1] do
-            for _ in [0..worldSize.Width-1] do
+        for y in [0..worldSize.Height-1] do
+            for x in [0..worldSize.Width-1] do
                 let cell = Rectangle()
+                cell.ToolTip <- sprintf "X=%d;Y=%d" x y
                 cell.StrokeThickness <- 0.0
+                cell.Fill <- System.Windows.Media.Brushes.Gray
                 //cell.StrokeThickness <- 0.5
                 //cell.Stroke <- System.Windows.Media.Brushes.Gray
 
