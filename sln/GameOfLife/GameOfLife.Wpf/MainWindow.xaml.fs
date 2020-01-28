@@ -8,6 +8,7 @@ open System.Windows.Controls.Primitives
 
 type MainWindowXaml = FsXaml.XAML<"MainWindow.xaml">
 
+[<Struct>]
 type CellState =
     |Alive
     |Dead
@@ -32,7 +33,7 @@ type MainWindow() as this =
     
     let rnd = System.Random()
     let frameRatePerSecond = 20
-    let worldSize = { Height = 100; Width = 100 }
+    let worldSize = { Height = 80; Width = 80 }
     let populationPercentage = 40
     let getRandomBool percentage = (rnd.Next 100) < percentage
     let mutable started = false
@@ -40,7 +41,8 @@ type MainWindow() as this =
     let generatePopulation ws = 
         let cellsCount = ws.Height * ws.Width
         let generateCellState () = if getRandomBool populationPercentage then CellState.Alive else CellState.Dead
-        let cells = [|0 .. cellsCount-1|] |> Array.map (fun _ -> generateCellState())
+        
+        let cells =  {1 .. cellsCount} |> Seq.map (fun _ -> generateCellState()) |> Seq.toArray
         { Cells=cells;WorldSize = ws;Generation = 1L} 
                    
     let getCellState population pos = 
@@ -54,7 +56,7 @@ type MainWindow() as this =
         let right = if cell.Y = population.WorldSize.Height - 1 then 0 else (cell.Y + 1)
 
         let neighborPositions = 
-            [
+            seq{
                 yield ( left, up  )                
                 yield ( cell.X, up)
                 yield ( right, up)
@@ -63,20 +65,21 @@ type MainWindow() as this =
                 yield ( left, down )
                 yield ( cell.X, down )
                 yield ( right, down )
-            ]|> List.map (fun (x,y) -> {X = x;Y = y})
+            }|> Seq.map (fun (x,y) -> {X = x;Y = y})
 
-        neighborPositions |> List.map (fun pos -> getCellState population pos)
+        neighborPositions 
+        |> Seq.map (fun pos -> getCellState population pos)
+        |> Seq.toList
 
     let mutatePopulation population = 
         let getPosFromShift shift =
             let (x,y) = Math.DivRem (shift, population.WorldSize.Width)
             {X = x;Y = y}
 
-        let mutateCell pos = 
+        let mutateCell pos cellState = 
             let neighborsStates = getNeighborsStates population pos
-            let aliveCount = neighborsStates |> List.filter (fun c -> c = CellState.Alive)|> List.length
-            let deadCount = neighborsStates |> List.filter (fun c -> c = CellState.Dead)|> List.length
-            let cellState = getCellState population pos
+            let aliveCount = neighborsStates |> Seq.filter (fun c -> c = CellState.Alive)|> Seq.length
+            let deadCount = neighborsStates |> Seq.filter (fun c -> c = CellState.Dead)|> Seq.length
 
             match (cellState, aliveCount, deadCount) with
             | (CellState.Dead, 3 ,_) -> CellState.Alive
@@ -84,18 +87,16 @@ type MainWindow() as this =
             | _ -> cellState
 
 
-        //population.Cells |> Array.iteri (fun i _ -> (
+        //population.Cells |> Array.iteri (fun i s -> (
         //                                                let pos = getPosFromShift i
-        //                                                let state= mutateCell pos
+        //                                                let state= mutateCell pos s
         //                                                population.Cells.[i] <- state))
 
         let mutatedCells = 
             population.Cells 
-            |> Array.toSeq 
-            |> Seq.mapi (fun i _ -> getPosFromShift i)
-            |> Seq.map (fun pos -> mutateCell pos)
-
-
+            |> Seq.mapi (fun i s -> ( let pos = getPosFromShift i
+                                      mutateCell pos s))
+            
         { population with 
             Cells = mutatedCells |> Seq.toArray
             Generation = population.Generation + 1L}
@@ -112,8 +113,8 @@ type MainWindow() as this =
         v.Fill <- brush
         ()
 
-    let drawWorld world =
-        Seq.zip (getCellViews()) world.Cells |> Seq.iter updateCellView
+    let drawWorld population =
+        Seq.zip (getCellViews()) population.Cells |> Seq.iter updateCellView
 
     let initCellViews worldSize = 
         this._worldField.Rows <- worldSize.Height   
@@ -123,6 +124,9 @@ type MainWindow() as this =
             for _ in [0..worldSize.Width-1] do
                 let cell = Rectangle()
                 cell.StrokeThickness <- 0.0
+                //cell.StrokeThickness <- 0.5
+                //cell.Stroke <- System.Windows.Media.Brushes.Gray
+
                 this._worldField.Children.Add(cell) |> ignore
                 ()
 
@@ -134,10 +138,10 @@ type MainWindow() as this =
     let onLoaded _ =  
         this.SnapsToDevicePixels <- true
         initCellViews worldSize
+        let mutable world = generatePopulation worldSize
 
 
         let lifeCycle = async {
-                let mutable world = generatePopulation worldSize
             
                 let draw _ = 
                     drawWorld world
