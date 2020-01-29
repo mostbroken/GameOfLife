@@ -32,8 +32,8 @@ type MainWindow() as this =
     inherit MainWindowXaml()
     
     let rnd = System.Random()
-    let frameRatePerSecond = 20
-    let worldSize = { Height = 80; Width = 80 }
+    let frameRatePerSecond = 3
+    let worldSize = { Height = 50; Width = 50 }
     let populationPercentage = 40
     let getRandomBool percentage = (rnd.Next 100) < percentage
     let mutable started = false
@@ -53,27 +53,29 @@ type MainWindow() as this =
         let up = if cell.Y = 0 then population.WorldSize.Height - 1 else (cell.Y - 1)
         let down = if cell.Y = population.WorldSize.Height - 1 then 0 else (cell.Y + 1)
         let left = if cell.X = 0 then population.WorldSize.Width - 1 else (cell.X - 1)
-        let right = if cell.Y = population.WorldSize.Height - 1 then 0 else (cell.Y + 1)
+        let right = if cell.X = population.WorldSize.Width - 1 then 0 else (cell.X + 1)
+        let centerX = cell.X
+        let centerY = cell.Y
 
         let neighborPositions = 
             seq{
                 yield ( left, up  )                
-                yield ( cell.X, up)
+                yield ( centerX, up)
                 yield ( right, up)
-                yield ( left, cell.Y )
-                yield ( right, cell.Y)
+                yield ( left, centerY )
+                yield ( right, centerY)
                 yield ( left, down )
-                yield ( cell.X, down )
+                yield ( centerX, down )
                 yield ( right, down )
-            }|> Seq.map (fun (x,y) -> {X = x;Y = y})
+            }|> Seq.map (fun (x,y) -> {X = x;Y = y}) |> Seq.toList
 
-        neighborPositions 
+        neighborPositions |> Seq.toList
         |> Seq.map (fun pos -> getCellState population pos)
         |> Seq.toList
 
     let mutatePopulation population = 
         let getPosFromShift shift =
-            let (x,y) = Math.DivRem (shift, population.WorldSize.Width)
+            let (y,x) = Math.DivRem (shift, population.WorldSize.Width)
             {X = x;Y = y}
 
         let mutateCell pos cellState = 
@@ -126,8 +128,8 @@ type MainWindow() as this =
                 cell.ToolTip <- sprintf "X=%d;Y=%d" x y
                 cell.StrokeThickness <- 0.0
                 cell.Fill <- System.Windows.Media.Brushes.Gray
-                //cell.StrokeThickness <- 0.5
-                //cell.Stroke <- System.Windows.Media.Brushes.Gray
+                cell.StrokeThickness <- 1.0
+                cell.Stroke <- System.Windows.Media.Brushes.Gray
 
                 this._worldField.Children.Add(cell) |> ignore
                 ()
